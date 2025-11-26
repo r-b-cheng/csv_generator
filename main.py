@@ -30,6 +30,7 @@ PROFESSOR_COLUMNS = [
 DATETIME_FORMAT = "%Y-%m-%d %H:%M"
 DATE_FORMAT = "%Y-%m-%d"
 DEFAULT_STEP_MINUTES = 30
+CSV_FILE_TYPES = [("CSV 文件", "*.csv"), ("所有文件", "*.*")]
 
 
 def ensure_csv_path(path_text: str, default_name: str) -> str:
@@ -91,6 +92,7 @@ class CSVApp(tk.Tk):
         self._build_ui()
 
     def _build_ui(self) -> None:
+        self._build_menu()
         notebook = ttk.Notebook(self)
         student_frame = ttk.Frame(notebook, padding=10)
         professor_frame = ttk.Frame(notebook, padding=10)
@@ -100,6 +102,21 @@ class CSVApp(tk.Tk):
 
         self._build_student_tab(student_frame)
         self._build_professor_tab(professor_frame)
+
+    def _build_menu(self) -> None:
+        menubar = tk.Menu(self)
+
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="打开学生 CSV", command=self.import_student_csv)
+        file_menu.add_command(label="导出学生 CSV", command=self.export_student_csv)
+        file_menu.add_separator()
+        file_menu.add_command(label="打开教师 CSV", command=self.import_prof_csv)
+        file_menu.add_command(label="导出教师 CSV", command=self.export_prof_csv)
+        file_menu.add_separator()
+        file_menu.add_command(label="退出", command=self.destroy)
+        menubar.add_cascade(label="文件", menu=file_menu)
+
+        self.config(menu=menubar)
 
     def _build_student_tab(self, frame: ttk.Frame) -> None:
         form = ttk.Frame(frame)
@@ -177,6 +194,11 @@ class CSVApp(tk.Tk):
         )
         ttk.Button(
             export_frame,
+            text="打开 CSV",
+            command=self.import_student_csv,
+        ).pack(side="right", padx=5)
+        ttk.Button(
+            export_frame,
             text="导出 student_schedule.csv",
             command=self.export_student_csv,
         ).pack(side="right", padx=5)
@@ -247,6 +269,11 @@ class CSVApp(tk.Tk):
             self.prof_path_var,
             "professors.csv",
         )
+        ttk.Button(
+            export_frame,
+            text="打开 CSV",
+            command=self.import_prof_csv,
+        ).pack(side="right", padx=5)
         ttk.Button(
             export_frame,
             text="导出 professors.csv",
@@ -328,7 +355,22 @@ class CSVApp(tk.Tk):
             if chosen:
                 path_var.set(os.path.join(chosen, default_name))
 
+        def browse_file() -> None:
+            current = path_var.get().strip()
+            initial_dir = os.path.dirname(current) if current else os.getcwd()
+            initial_file = os.path.basename(current) if current else default_name
+            chosen = filedialog.asksaveasfilename(
+                title="选择保存位置",
+                defaultextension=".csv",
+                filetypes=CSV_FILE_TYPES,
+                initialdir=initial_dir,
+                initialfile=initial_file,
+            )
+            if chosen:
+                path_var.set(chosen)
+
         ttk.Button(parent, text="选择目录", command=browse_dir).pack(side="left", padx=5)
+        ttk.Button(parent, text="选择文件", command=browse_file).pack(side="left", padx=5)
 
     def save_student_entry(self) -> None:
         try:
@@ -375,14 +417,36 @@ class CSVApp(tk.Tk):
         self.student_tree.selection_remove(self.student_tree.selection())
 
     def export_student_csv(self) -> None:
+        save_path = self._ask_save_path(
+            self.student_path_var, "student_schedule.csv", "保存学生日程 CSV"
+        )
+        if not save_path:
+            return
         try:
-            path = ensure_csv_path(
-                self.student_path_var.get(), "student_schedule.csv"
-            )
+            path = ensure_csv_path(save_path, "student_schedule.csv")
             self._write_csv(path, STUDENT_COLUMNS, self.student_data)
+            self.student_path_var.set(path)
             messagebox.showinfo("已导出", f"学生日程已保存到:\n{path}")
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("导出失败", str(exc))
+
+    def import_student_csv(self) -> None:
+        path = filedialog.askopenfilename(
+            title="打开学生日程 CSV", filetypes=CSV_FILE_TYPES
+        )
+        if not path:
+            return
+        try:
+            data = self._load_csv_data(path, STUDENT_COLUMNS)
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("打开失败", str(exc))
+            return
+
+        self.student_data = data
+        self.refresh_tree(self.student_tree, self.student_data, STUDENT_COLUMNS)
+        self.clear_student_form()
+        self.student_path_var.set(path)
+        messagebox.showinfo("已加载", f"已从下列文件载入 {len(data)} 条学生日程:\n{path}")
 
     def _collect_student_input(self) -> dict:
         values = {
@@ -459,12 +523,36 @@ class CSVApp(tk.Tk):
         self.prof_tree.selection_remove(self.prof_tree.selection())
 
     def export_prof_csv(self) -> None:
+        save_path = self._ask_save_path(
+            self.prof_path_var, "professors.csv", "保存教师办公时间 CSV"
+        )
+        if not save_path:
+            return
         try:
-            path = ensure_csv_path(self.prof_path_var.get(), "professors.csv")
+            path = ensure_csv_path(save_path, "professors.csv")
             self._write_csv(path, PROFESSOR_COLUMNS, self.professor_data)
+            self.prof_path_var.set(path)
             messagebox.showinfo("已导出", f"教师办公时间已保存到:\n{path}")
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("导出失败", str(exc))
+
+    def import_prof_csv(self) -> None:
+        path = filedialog.askopenfilename(
+            title="打开教师办公时间 CSV", filetypes=CSV_FILE_TYPES
+        )
+        if not path:
+            return
+        try:
+            data = self._load_csv_data(path, PROFESSOR_COLUMNS)
+        except Exception as exc:  # noqa: BLE001
+            messagebox.showerror("打开失败", str(exc))
+            return
+
+        self.professor_data = data
+        self.refresh_tree(self.prof_tree, self.professor_data, PROFESSOR_COLUMNS)
+        self.clear_prof_form()
+        self.prof_path_var.set(path)
+        messagebox.showinfo("已加载", f"已从下列文件载入 {len(data)} 条教师记录:\n{path}")
 
     def _collect_prof_input(self) -> dict:
         values = {k: v.get().strip() for k, v in self.prof_vars.items()}
@@ -501,6 +589,42 @@ class CSVApp(tk.Tk):
             writer.writeheader()
             for row in data:
                 writer.writerow(row)
+
+    def _ask_save_path(
+        self, path_var: tk.StringVar, default_name: str, title: str
+    ) -> str | None:
+        """
+        Prompt for a save location, prefilled with the current or default file name.
+        """
+        current = path_var.get().strip() or os.path.join(os.getcwd(), default_name)
+        initial_dir = os.path.dirname(current) or os.getcwd()
+        initial_file = os.path.basename(current) or default_name
+        chosen = filedialog.asksaveasfilename(
+            title=title,
+            defaultextension=".csv",
+            filetypes=CSV_FILE_TYPES,
+            initialdir=initial_dir,
+            initialfile=initial_file,
+        )
+        if not chosen:
+            return None
+        path_var.set(chosen)
+        return chosen
+
+    def _load_csv_data(self, path: str, columns: list[str]) -> list[dict]:
+        with open(path, newline="", encoding="utf-8") as csvfile:
+            reader = csv.DictReader(csvfile)
+            if not reader.fieldnames:
+                raise ValueError("CSV 文件缺少表头")
+            missing = [col for col in columns if col not in reader.fieldnames]
+            if missing:
+                raise ValueError(f"缺少必要列: {', '.join(missing)}")
+            rows: list[dict] = []
+            for row in reader:
+                rows.append({col: str(row.get(col, "") or "").strip() for col in columns})
+            if not rows:
+                raise ValueError("CSV 文件为空")
+            return rows
 
     @staticmethod
     def refresh_tree(tree: ttk.Treeview, data: list[dict], columns: list[str]) -> None:
