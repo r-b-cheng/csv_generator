@@ -8,4 +8,4 @@ This is a tool which can help you to fill the csv files needed in the calendar p
 python 3.12
 
 # you can download de excutable file with
-./csvgenerator.exe
+[download](csv_tool.exe)
